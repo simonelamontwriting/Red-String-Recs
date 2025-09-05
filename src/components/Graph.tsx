@@ -244,7 +244,8 @@ export default function Graph({
               isConnectSource={pendingSourceId === n.id}
               isConnectTarget={pendingTargetId === n.id}
               onEnter={(id) => setHoveredId(id)}
-              onLeave={(id) => setHoveredId((prev) => (prev === id ? null : prev))}
+              // IMPORTANT: no functional updater here (prop expects value, not setter)
+              onLeave={(id) => setHoveredId(hoveredId === id ? null : hoveredId)}
               onPointerDown={onNotePointerDown}
               onClickNote={(id) => onNodeClick(id)}
               onDoubleClickNote={(id) => {

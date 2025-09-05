@@ -13,7 +13,7 @@ type Props = {
 
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
-  onConnectStart: (id: string) => void; // toggles connect mode / sets source
+  onConnectStart: (id: string) => void; // toggle connect / set source
   onNodeClick: (id: string) => void;    // pick target in connect mode
 
   pendingSourceId: string | null;
@@ -69,10 +69,10 @@ export default function Graph({
   const panPrev = useRef<{ x: number; y: number } | null>(null);
   const dragNode = useRef<NodeDatum | null>(null);
 
-  // Link hover overlay (reason bubble + scissors)
+  // Hovered link overlay (reason bubble follows cursor along the string)
   const [hoverLink, setHoverLink] = useState<{ index: number; cx: number; cy: number; reason?: string } | null>(null);
 
-  /* ---------------- Coords ---------------- */
+  /* -------- Coordinate helpers -------- */
   const toSvgLocal = (clientX: number, clientY: number) => {
     const svg = svgRef.current!;
     const pt = svg.createSVGPoint();
@@ -95,13 +95,13 @@ export default function Graph({
     return { x: p.x, y: p.y };
   };
 
-  /* ---------------- Background pan/zoom ---------------- */
+  /* -------- Background pan/zoom -------- */
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
     if (dragNode.current) return;
-    panning.current = true;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    panning.current = true;
     panPrev.current = toSvgLocal(e.clientX, e.clientY);
-    setHoverLink(null); // click background also clears link hover
+    setHoverLink(null);
   };
   const onBackgroundPointerMove = (e: React.PointerEvent) => {
     if (dragNode.current) return;
@@ -120,6 +120,7 @@ export default function Graph({
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     if (!svgRef.current || !worldRef.current) return;
+
     const svg = svgRef.current;
     const world = worldRef.current;
 
@@ -130,18 +131,15 @@ export default function Graph({
     const svgLocal = pt.matrixTransform(svg.getScreenCTM()!.inverse());
     const worldLocal = pt.matrixTransform(world.getScreenCTM()!.inverse());
 
-    let factor: number;
-    if (e.ctrlKey) factor = Math.exp(-e.deltaY * 0.002);
-    else factor = e.deltaY > 0 ? 0.9 : 1.1;
-
+    const factor = e.ctrlKey ? Math.exp(-e.deltaY * 0.002) : e.deltaY > 0 ? 0.9 : 1.1;
     const k = Math.min(5, Math.max(0.2, cam.k * factor));
     const tx = svgLocal.x - k * worldLocal.x;
     const ty = svgLocal.y - k * worldLocal.y;
     setCam({ k, tx, ty });
-    setHoverLink(null); // zoom also clears bubble
+    setHoverLink(null);
   };
 
-  /* ---------------- Node drag ---------------- */
+  /* -------- Node drag -------- */
   const onNotePointerDown = (e: React.PointerEvent, n: NodeDatum) => {
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     if (draggable) dragNode.current = n;
@@ -158,7 +156,7 @@ export default function Graph({
     dragNode.current = null;
   };
 
-  /* ---------------- Dark-academia corkboard ---------------- */
+  /* -------- Dark corkboard -------- */
   const corkStyle: React.CSSProperties = {
     backgroundColor: "#2b241b",
     backgroundImage:
@@ -222,7 +220,7 @@ export default function Graph({
 
         {/* World (pan/zoom container) */}
         <g ref={worldRef} transform={`translate(${cam.tx},${cam.ty}) scale(${cam.k})`}>
-          {/* massive invisible backdrop */}
+          {/* Infinite panning backdrop */}
           <rect
             x={-W / 2 - WORLD_PAD}
             y={-H / 2 - WORLD_PAD}
@@ -234,50 +232,7 @@ export default function Graph({
             onPointerUp={onBackgroundPointerUp}
           />
 
-          {/* Strings */}
-          {data.links.map((l, i) => {
-            const s = typeof l.source === "string" ? data.nodes.find((n) => n.id === l.source)! : (l.source as NodeDatum);
-            const t = typeof l.target === "string" ? data.nodes.find((n) => n.id === l.target)! : (l.target as NodeDatum);
-            if (!s || !t || s.x == null || s.y == null || t.x == null || t.y == null) return null;
-
-            const sa = pinAnchor(s);
-            const ta = pinAnchor(t);
-            const d = corkStringPath(sa.x, sa.y, ta.x, ta.y);
-
-            const dx = ta.x - sa.x;
-            const dy = ta.y - sa.y;
-            const dist = Math.hypot(dx, dy) || 1;
-            const sag = Math.min(120, dist / 3);
-            const midx = (sa.x + ta.x) / 2;
-            const midy = (sa.y + ta.y) / 2 + sag * 0.35;
-
-            return (
-              <g key={i}>
-                <path d={d} stroke="#a33a30" strokeWidth={2.8} strokeOpacity={0.95} fill="none" style={{ filter: "url(#stringGlow)" }} />
-                {/* Fat invisible hover hitbox */}
-                <path
-            d={d}
-            stroke="transparent"
-            strokeWidth={28}                      // fat hitbox along the whole string
-            fill="none"
-            style={{ cursor: "pointer" }}        // (optional: custom cursor below)
-            onMouseEnter={(e) => {
-              const p = toWorld(e.clientX, e.clientY);
-              setHoverLink({ index: i, cx: p.x, cy: p.y, reason: l.reason });
-            }}
-            onMouseMove={(e) => {
-              const p = toWorld(e.clientX, e.clientY);
-              setHoverLink({ index: i, cx: p.x, cy: p.y, reason: l.reason });
-            }}
-            onMouseLeave={() => setHoverLink(null)}
-            onClick={() => onRemoveLink(i)}      // ← cuts the string wherever you click
-          />
-
-              </g>
-            );
-          })}
-
-          {/* Notes on top */}
+          {/* NOTES */}
           {data.nodes.map((n) => (
             <StickyNote
               key={n.id}
@@ -306,24 +261,52 @@ export default function Graph({
             />
           ))}
 
-          {/* FRONTMOST overlay: reason bubble + scissors */}
+          {/* STRINGS — invisible hitbox along the path; click anywhere to cut */}
+          {data.links.map((l, i) => {
+            const s = typeof l.source === "string" ? data.nodes.find((n) => n.id === l.source)! : (l.source as NodeDatum);
+            const t = typeof l.target === "string" ? data.nodes.find((n) => n.id === l.target)! : (l.target as NodeDatum);
+            if (!s || !t || s.x == null || s.y == null || t.x == null || t.y == null) return null;
+
+            const sa = pinAnchor(s);
+            const ta = pinAnchor(t);
+            const d = corkStringPath(sa.x, sa.y, ta.x, ta.y);
+
+            return (
+              <g key={i}>
+                {/* visible red string */}
+                <path d={d} stroke="#a33a30" strokeWidth={3.0} strokeOpacity={0.98} fill="none" style={{ filter: "url(#stringGlow)" }} />
+                {/* transparent hitbox that follows the entire string */}
+                <path
+                  d={d}
+                  stroke="transparent"
+                  strokeWidth={28}
+                  fill="none"
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={(e) => {
+                    const p = toWorld(e.clientX, e.clientY);
+                    setHoverLink({ index: i, cx: p.x, cy: p.y, reason: l.reason });
+                  }}
+                  onMouseMove={(e) => {
+                    const p = toWorld(e.clientX, e.clientY);
+                    setHoverLink({ index: i, cx: p.x, cy: p.y, reason: l.reason });
+                  }}
+                  onMouseLeave={() => setHoverLink(null)}
+                  onClick={() => onRemoveLink(i)}
+                />
+              </g>
+            );
+          })}
+
+          {/* FRONTMOST overlay: reason bubble (display only; does not capture clicks) */}
           {hoverLink && (
-            <g transform={`translate(${hoverLink.cx},${hoverLink.cy})`}>
-              {/* reason bubble */}
-              <g>
-                <g opacity={0.28} transform="translate(3,6)">
-                  <rect x={-170} y={-54} width={340} height={38} rx={10} fill="#0b0b0b" />
-                </g>
-                <rect x={-170} y={-54} width={340} height={38} rx={10} fill="#111827" stroke="#2a2f3a" />
-                <text x={-160} y={-30} fontSize={13} fill="#f8fafc">
-                  {hoverLink.reason ? hoverLink.reason : "Connected"}
-                </text>
+            <g transform={`translate(${hoverLink.cx},${hoverLink.cy})`} pointerEvents="none">
+              <g opacity={0.28} transform="translate(3,6)">
+                <rect x={-190} y={-58} width={380} height={42} rx={12} fill="#0b0b0b" />
               </g>
-              {/* scissors icon with HUGE hit area */}
-              <g transform="translate(0,0)" style={{ cursor: "pointer" }} onClick={() => onRemoveLink(hoverLink.index)}>
-                <circle cx={0} cy={0} r={28} fill="transparent" />
-                <text x={-12} y={9} fontSize={30}>✂️</text>
-              </g>
+              <rect x={-190} y={-58} width={380} height={42} rx={12} fill="#111827" stroke="#2a2f3a" />
+              <text x={-178} y={-32} fontSize={14} fill="#f8fafc">
+                {hoverLink.reason ? hoverLink.reason : "Connected"}
+              </text>
             </g>
           )}
         </g>

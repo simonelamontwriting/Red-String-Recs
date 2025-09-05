@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Red String Recs</title>
+    <meta name="description" content="Red String Recs – interactive dark-academia corkboard of recommendations" />
+
+    <!-- Handwriting font (optional but recommended) -->
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
+
+    <!-- Tailwind via CDN (matches your 'no PostCSS' setup) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { handwriting: ['"Caveat"', 'cursive'] },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen">
+    <div id="root"></div>
+
+    <!-- Vite entry -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
